@@ -1,0 +1,39 @@
+name: Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: 'Build configuration'
+        required: true
+        default: 'Release'
+        type: choice
+        options:
+          - Debug
+          - Release
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build & Publish
+        run: |
+          dotnet publish -c ${{ github.event.inputs.configuration }} `
+            -p:PublishSingleFile=true `
+            --self-contained true
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OplusEdlTool-${{ github.event.inputs.configuration }}
+          path: bin/**/publish/
