@@ -128,6 +128,7 @@ namespace OplusEdlTool
         private string? currentRwMode;
         private string? romImagesPath;
         private string[]? rawProgramFiles;
+        private RomPackageInfo _romPackage = RomPackageInfo.Unknown;
 
         public MainWindow()
         {
@@ -179,6 +180,8 @@ namespace OplusEdlTool
             AutoRebootCheckBox.Content = Lang.AutoReboot;
             ExportXmlCheckBox.Content = Lang.ExportXml;
             ProtectLun5CheckBox.Content = Lang.ProtectLun5;
+            SkipPatchXmlCheckBox.Content = Lang.SkipPatchXml;
+            ToolTip.SetTip(SkipPatchXmlCheckBox, Lang.SkipPatchXmlTooltip);
             LblLog.Text = Lang.Log;
             LblPort9008.Text = Lang.Port9008;
             BtnClear.Content = Lang.Clear;
@@ -511,6 +514,7 @@ namespace OplusEdlTool
             
             if (folders.Count == 0) return;
 
+            _romPackage = RomPackageInfo.Unknown;
             var selectedPath = folders[0].Path.LocalPath;
             var imagesPath = FindImagesFolder(selectedPath);
             
@@ -522,6 +526,9 @@ namespace OplusEdlTool
             }
 
             if (!await ValidateAndLoadRawProgram(imagesPath, selectedPath)) return;
+
+            _romPackage = FirmwarePackageClassifier.ClassifyRomFolder(selectedPath);
+            LogRomPackage();
         }
 
         private async Task SelectOfpOpsFile()
@@ -539,6 +546,7 @@ namespace OplusEdlTool
             
             if (files.Count == 0) return;
 
+            _romPackage = RomPackageInfo.Unknown;
             var filePath = files[0].Path.LocalPath;
             var ext = Path.GetExtension(filePath).ToLower();
 
@@ -579,7 +587,13 @@ namespace OplusEdlTool
             AppendLog($"Extraction completed: {extractPath}");
             await MergeSuperImages(extractPath);
             var imagesPath = FindImagesFolder(extractPath) ?? extractPath;
-            if (!await ValidateAndLoadRawProgram(imagesPath, extractPath)) return;
+            if (!await ValidateAndLoadRawProgram(imagesPath, extractPath))
+            {
+                _romPackage = RomPackageInfo.Unknown;
+                return;
+            }
+
+            LogRomPackage();
         }
 
         private async Task MergeSuperImages(string extractPath)
@@ -932,7 +946,7 @@ namespace OplusEdlTool
                 Grid.ItemsSource = rows.ToList();
                 
                 var existingFiles = rows.Count(r => !r.FilePath.StartsWith("[NOT FOUND]"));
-                RomInfo.Text = $"Found {totalPartitions} partitions, {existingFiles} files available";
+                RomInfo.Text = $"Found {totalPartitions} partitions, {existingFiles} files available | {GetRomPackageKindName(_romPackage.Kind)}";
             });
             
             AppendLog($"Loaded {totalPartitions} partitions from {rawProgramFiles.Length} XML files");
@@ -1646,11 +1660,17 @@ namespace OplusEdlTool
 
                 if (rawProgramFiles != null && rawProgramFiles.Length > 0)
                 {
-                    AppendLog("Applying patch files...");
+                    AppendLog(SkipPatchXmlCheckBox.IsChecked == true 
+                        ? "[Skip Patch XML] Skipping patch XML files" 
+                        : "Applying patch files...");
                     var patchMode = await edl.TestRwModeAsync(port);
                     var patchRwMode = patchMode.rwmode;
                     var patchXmlFiles = rawProgramFiles.AsEnumerable();
-                    if (protectLun5)
+                    if (SkipPatchXmlCheckBox.IsChecked == true)
+                    {
+                        patchXmlFiles = Enumerable.Empty<string>();
+                    }
+                    else if (protectLun5)
                     {
                         patchXmlFiles = rawProgramFiles.Where(f => 
                             !Path.GetFileName(f).Equals("rawprogram5.xml", StringComparison.OrdinalIgnoreCase));
@@ -1663,12 +1683,23 @@ namespace OplusEdlTool
                     {
                         AppendLog($"Patch files applied: {patchCount} file(s)");
                     }
+                    else if (SkipPatchXmlCheckBox.IsChecked == true)
+                    {
+                        AppendLog("[Skip Patch XML] Skipped by user setting");
+                    }
                     else
                     {
                         AppendLog("No patch files were applied (files may not exist)");
                     }
                     
-                    await edl.SendSetBootableStorageDriveAsync(port);
+                    if (_romPackage.IsThirdParty)
+                    {
+                        AppendLog(Lang.BootPartitionSkippedNonOfficial);
+                    }
+                    else
+                    {
+                        await edl.SendSetBootableStorageDriveAsync(port);
+                    }
                 }
 
                 if (AutoRebootCheckBox.IsChecked == true)
@@ -1906,13 +1937,19 @@ namespace OplusEdlTool
 
                 if (rawProgramFiles != null && rawProgramFiles.Length > 0)
                 {
-                    AppendLog("Applying patch files...");
+                    AppendLog(SkipPatchXmlCheckBox.IsChecked == true 
+                        ? "[Skip Patch XML] Skipping patch XML files" 
+                        : "Applying patch files...");
                     
                     var patchMode = await edl.TestRwModeAsync(port);
                     var patchRwMode = patchMode.rwmode;
                     
                     var patchXmlFiles = rawProgramFiles.AsEnumerable();
-                    if (protectLun5)
+                    if (SkipPatchXmlCheckBox.IsChecked == true)
+                    {
+                        patchXmlFiles = Enumerable.Empty<string>();
+                    }
+                    else if (protectLun5)
                     {
                         patchXmlFiles = rawProgramFiles.Where(f => 
                             !Path.GetFileName(f).Equals("rawprogram5.xml", StringComparison.OrdinalIgnoreCase));
@@ -1925,12 +1962,23 @@ namespace OplusEdlTool
                     {
                         AppendLog($"Patch files applied: {patchCount} file(s)");
                     }
+                    else if (SkipPatchXmlCheckBox.IsChecked == true)
+                    {
+                        AppendLog("[Skip Patch XML] Skipped by user setting");
+                    }
                     else
                     {
                         AppendLog("No patch files were applied (files may not exist)");
                     }
                     
-                    await edl.SendSetBootableStorageDriveAsync(port);
+                    if (_romPackage.IsThirdParty)
+                    {
+                        AppendLog(Lang.BootPartitionSkippedNonOfficial);
+                    }
+                    else
+                    {
+                        await edl.SendSetBootableStorageDriveAsync(port);
+                    }
                 }
 
                 if (AutoRebootCheckBox.IsChecked == true)
@@ -2062,12 +2110,25 @@ namespace OplusEdlTool
         private enum MessageBoxButtons { OK, YesNo, YesNoCancel }
         private enum MessageBoxResult { OK, Yes, No, Cancel }
 
+        private static string GetRomPackageKindName(RomPackageKind kind) => kind switch
+        {
+            RomPackageKind.OfficialSfp => Lang.PackageKindOfficialSfp,
+            RomPackageKind.ThirdParty => Lang.PackageKindThirdParty,
+            _ => Lang.PackageKindUnknown
+        };
+
+        private void LogRomPackage()
+        {
+            AppendLog(string.Format(Lang.RomPackageDetected, GetRomPackageKindName(_romPackage.Kind), _romPackage.Reason));
+        }
+
         private async System.Threading.Tasks.Task<MessageBoxResult> ShowMessageBox(
             string message, string title, MessageBoxButtons buttons)
         {
             var dialog = new Window
             {
                 Title = title,
+                Icon = this.Icon,
                 MinWidth = 300,
                 MaxWidth = 600,
                 MinHeight = 150,
@@ -2101,26 +2162,26 @@ namespace OplusEdlTool
 
             if (buttons == MessageBoxButtons.OK)
             {
-                var okBtn = new Button { Content = "OK", Width = 80, Margin = new Thickness(5), HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center };
+                var okBtn = new Button { Content = Lang.BtnOk, Width = 80, Margin = new Thickness(5), HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center };
                 okBtn.Click += (s, e) => { result = MessageBoxResult.OK; dialog.Close(); };
                 buttonPanel.Children.Add(okBtn);
             }
             else if (buttons == MessageBoxButtons.YesNo)
             {
-                var yesBtn = new Button { Content = "Yes", Width = 80, Margin = new Thickness(5), HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center };
+                var yesBtn = new Button { Content = Lang.BtnYes, Width = 80, Margin = new Thickness(5), HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center };
                 yesBtn.Click += (s, e) => { result = MessageBoxResult.Yes; dialog.Close(); };
-                var noBtn = new Button { Content = "No", Width = 80, Margin = new Thickness(5), HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center };
+                var noBtn = new Button { Content = Lang.BtnNo, Width = 80, Margin = new Thickness(5), HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center };
                 noBtn.Click += (s, e) => { result = MessageBoxResult.No; dialog.Close(); };
                 buttonPanel.Children.Add(yesBtn);
                 buttonPanel.Children.Add(noBtn);
             }
             else if (buttons == MessageBoxButtons.YesNoCancel)
             {
-                var yesBtn = new Button { Content = "Yes", Width = 80, Margin = new Thickness(5), HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center };
+                var yesBtn = new Button { Content = Lang.BtnYes, Width = 80, Margin = new Thickness(5), HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center };
                 yesBtn.Click += (s, e) => { result = MessageBoxResult.Yes; dialog.Close(); };
-                var noBtn = new Button { Content = "No", Width = 80, Margin = new Thickness(5), HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center };
+                var noBtn = new Button { Content = Lang.BtnNo, Width = 80, Margin = new Thickness(5), HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center };
                 noBtn.Click += (s, e) => { result = MessageBoxResult.No; dialog.Close(); };
-                var cancelBtn = new Button { Content = "Cancel", Width = 80, Margin = new Thickness(5), HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center };
+                var cancelBtn = new Button { Content = Lang.BtnCancel, Width = 80, Margin = new Thickness(5), HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center };
                 cancelBtn.Click += (s, e) => { result = MessageBoxResult.Cancel; dialog.Close(); };
                 buttonPanel.Children.Add(yesBtn);
                 buttonPanel.Children.Add(noBtn);

@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -25,21 +26,59 @@ namespace OplusEdlTool.Services
                     var settings = JsonSerializer.Deserialize(json, LanguageJsonContext.Default.LanguageSettings);
                     if (settings != null && !string.IsNullOrEmpty(settings.Language))
                     {
-                        _currentLanguage = settings.Language;
+                        _currentLanguage = NormalizeLanguage(settings.Language);
                         System.Diagnostics.Debug.WriteLine($"Language loaded: {_currentLanguage}");
+                        return;
                     }
                 }
-                else
-                {
-                    System.Diagnostics.Debug.WriteLine("Language settings file not found");
-                }
+
+                System.Diagnostics.Debug.WriteLine("Language settings not found or invalid, detecting from system language");
+                _currentLanguage = DetectSystemLanguage();
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Failed to load language settings: {ex.Message}");
-                _currentLanguage = "en";
+                _currentLanguage = DetectSystemLanguage();
             }
         }
+
+        private static string DetectSystemLanguage()
+        {
+            try
+            {
+                var name = CultureInfo.CurrentUICulture.Name;
+                if (string.IsNullOrEmpty(name) || name == "iv")
+                {
+                    name = CultureInfo.InstalledUICulture.Name;
+                }
+
+                var detected = IsChineseCulture(name) ? "zh" : "en";
+                System.Diagnostics.Debug.WriteLine($"Detected system language: {name} -> {detected}");
+                return detected;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to detect system language: {ex.Message}");
+                return "en";
+            }
+        }
+
+        private static bool IsChineseCulture(string? cultureName)
+        {
+            if (string.IsNullOrEmpty(cultureName) || cultureName == "iv")
+            {
+                return false;
+            }
+
+            return cultureName.Equals("zh", StringComparison.OrdinalIgnoreCase)
+                || cultureName.StartsWith("zh-", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizeLanguage(string language)
+        {
+            return language.StartsWith("zh", StringComparison.OrdinalIgnoreCase) ? "zh" : "en";
+        }
+
         public static bool SaveLanguage(string language)
         {
             try
@@ -120,6 +159,19 @@ namespace OplusEdlTool.Services
         public static string ExportXmlTooltip => LanguageService.IsChinese ? "备份分区时同时导出 rawprogram XML 文件" : "Export rawprogram XML when backing up partitions";
         public static string StartFlash => LanguageService.IsChinese ? "开始刷机" : "Start Flash";
         public static string ProtectLun5 => LanguageService.IsChinese ? "保护 LUN5" : "Protect LUN5";
+        public static string SkipPatchXml => LanguageService.IsChinese ? "不写 Patch XML" : "Skip Patch XML";
+        public static string SkipPatchXmlTooltip => LanguageService.IsChinese 
+            ? "跳过所有 Patch XML 的写入，无论固件中是否存在 patch 文件" 
+            : "Skip writing all patch XML files regardless of whether the firmware contains any";
+        public static string RomPackageDetected => LanguageService.IsChinese 
+            ? "固件包类型: {0}（{1}）" 
+            : "Firmware package type: {0} ({1})";
+        public static string PackageKindOfficialSfp => LanguageService.IsChinese ? "官方包 (SFP)" : "Official (SFP)";
+        public static string PackageKindThirdParty => LanguageService.IsChinese ? "第三方/自定义包" : "Third-party/custom";
+        public static string PackageKindUnknown => LanguageService.IsChinese ? "未判定" : "Not classified";
+        public static string BootPartitionSkippedNonOfficial => LanguageService.IsChinese 
+            ? "[启动分区] 当前为第三方/自定义包，跳过设置启动分区" 
+            : "[Boot] Third-party/custom package, skipping setbootablestoragedrive";
         public static string Log => LanguageService.IsChinese ? "日志" : "Log";
         public static string Port9008 => LanguageService.IsChinese ? "9008 端口:" : "9008 Port:";
         public static string NotDetected => LanguageService.IsChinese ? "未检测到" : "Not detected";
@@ -143,6 +195,10 @@ namespace OplusEdlTool.Services
         public static string NoSelection => LanguageService.IsChinese ? "未选择" : "No Selection";
         public static string PleaseSelectXml => LanguageService.IsChinese ? "请至少选择一个 XML 文件来加载。" : "Please select at least one XML file to load.";
         public static string Error => LanguageService.IsChinese ? "错误" : "Error";
+        public static string BtnOk => LanguageService.IsChinese ? "确定" : "OK";
+        public static string BtnYes => LanguageService.IsChinese ? "是" : "Yes";
+        public static string BtnNo => LanguageService.IsChinese ? "否" : "No";
+        public static string BtnCancel => LanguageService.IsChinese ? "取消" : "Cancel";
         public static string LanguageSwitch => LanguageService.IsChinese ? "切换语言" : "Switch Language";
         public static string LanguageSwitchMessage => LanguageService.IsChinese 
             ? "语言将切换为英语。\n需要重启应用程序才能生效。\n\n是否立即重启？" 
